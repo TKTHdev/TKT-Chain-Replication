@@ -7,7 +7,7 @@ import (
 	"time"
 )
 
-const WRITE_LINGER_TIME = 5 * time.Millisecond
+const WRITE_LINGER_TIME = 1 * time.Millisecond
 
 func (c *ChainNode) listen() error {
 	addr, err := net.ResolveUDPAddr("udp", c.peers[c.me])
