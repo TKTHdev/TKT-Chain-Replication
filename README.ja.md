@@ -126,6 +126,12 @@ make benchmark TYPE=ycsb-b WORKERS='1 2 4 8 16 32 64 128'
 
 ### ベンチマーク結果例
 
+> 筆者のローカルマシンで計測した結果です :)
+
+YCSB-A (50% write)、チェーン長を変えて測定 (3 / 5 / 7 / 11 ノード):
+
+![YCSB-A ベンチマーク結果](chain_replication_ycsb-a.png)
+
 3 ノード構成、YCSB-A (50% write):
 
 | Workers | Throughput (ops/sec) | Latency (ms) |

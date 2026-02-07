@@ -126,6 +126,12 @@ Results are written as CSV files to the `results/` directory.
 
 ### Sample Benchmark Results
 
+> Results were measured on the author's local machine :)
+
+YCSB-A (50% write), varying chain length (3 / 5 / 7 / 11 nodes):
+
+![YCSB-A Benchmark Results](chain_replication_ycsb-a.png)
+
 3-node chain, YCSB-A (50% write):
 
 | Workers | Throughput (ops/sec) | Latency (ms) |
