@@ -1,6 +1,7 @@
 BINARY_NAME  := chain_server
 CONFIG_FILE  := cluster.conf
 LOG_DIR      := ./logs
+RESULT_DIR   := ./results
 
 ALL_IDS := $(shell jq -r '.[].id' $(CONFIG_FILE))
 TARGET_ID ?= all
@@ -16,15 +17,27 @@ ifeq ($(DEBUG),true)
     DEBUG_FLAG := --debug
 endif
 
-.PHONY: help build start kill clean
+# Benchmark parameters
+WORKLOAD ?= ycsb-a
+WORKERS  ?= 1
+TIMESTAMP := $(shell date +%Y%m%d_%H%M%S)
+
+.PHONY: help build start kill clean benchmark
 
 help:
-	@echo "Usage: make [target] [TARGET_ID=id] [DEBUG=true]"
+	@echo "Usage: make [target] [OPTIONS]"
+	@echo ""
 	@echo "Targets:"
-	@echo "  build   - Build the binary"
-	@echo "  start   - Start all nodes (or TARGET_ID=n for specific node)"
-	@echo "  kill    - Kill all nodes (or TARGET_ID=n for specific node)"
-	@echo "  clean   - Remove binaries and logs"
+	@echo "  build     - Build the binary"
+	@echo "  start     - Start all nodes (or TARGET_ID=n for specific node)"
+	@echo "  kill      - Kill all nodes (or TARGET_ID=n for specific node)"
+	@echo "  clean     - Remove binaries and logs"
+	@echo "  benchmark - Run YCSB benchmark"
+	@echo ""
+	@echo "Options:"
+	@echo "  DEBUG=true           - Enable debug logging"
+	@echo "  WORKLOAD=ycsb-a      - Workload type (ycsb-a, ycsb-b, ycsb-c)"
+	@echo "  WORKERS=1            - Number of concurrent workers"
 
 build:
 	go build -o $(BINARY_NAME) .
@@ -53,3 +66,13 @@ kill:
 clean:
 	rm -f $(BINARY_NAME)
 	rm -rf $(LOG_DIR)
+	rm -rf $(RESULT_DIR)
+
+benchmark: build
+	@mkdir -p $(RESULT_DIR)
+	@$(MAKE) kill 2>/dev/null || true
+	@$(MAKE) start
+	@sleep 2
+	@echo "Running benchmark: WORKLOAD=$(WORKLOAD) WORKERS=$(WORKERS)"
+	@./$(BINARY_NAME) client --conf $(CONFIG_FILE) --workload $(WORKLOAD) --workers $(WORKERS) $(DEBUG_FLAG) | tee $(RESULT_DIR)/bench_$(TIMESTAMP).log
+	@$(MAKE) kill
