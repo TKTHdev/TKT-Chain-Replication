@@ -3,7 +3,7 @@ CONFIG_FILE  := cluster.conf
 LOG_DIR      := ./logs
 RESULT_DIR   := ./results
 
-ALL_IDS := $(shell jq -r '.[].id' $(CONFIG_FILE))
+ALL_IDS := $(shell jq -r '.[] | select(.role == "server") | .id' $(CONFIG_FILE))
 TARGET_ID ?= all
 ifeq ($(TARGET_ID),all)
     IDS := $(ALL_IDS)

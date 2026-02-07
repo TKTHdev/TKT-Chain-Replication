@@ -12,9 +12,10 @@ type Node struct {
 	ID   int    `json:"id"`
 	IP   string `json:"ip"`
 	Port int    `json:"port"`
+	Role string `json:"role"`
 }
 
-func parseConfig(confPath string) map[int]string {
+func loadNodes(confPath string) []Node {
 	file, err := os.ReadFile(confPath)
 	if err != nil {
 		log.Fatalf("Failed to read config file: %v", err)
@@ -25,11 +26,31 @@ func parseConfig(confPath string) map[int]string {
 		log.Fatalf("Failed to parse config file: %v", err)
 	}
 
+	return nodes
+}
+
+func parseConfig(confPath string) map[int]string {
+	nodes := loadNodes(confPath)
+
 	peerIPs := make(map[int]string)
 	for _, node := range nodes {
-		peerIPs[node.ID] = fmt.Sprintf("%s:%d", node.IP, node.Port)
+		if node.Role == "server" {
+			peerIPs[node.ID] = fmt.Sprintf("%s:%d", node.IP, node.Port)
+		}
 	}
 	return peerIPs
+}
+
+func parseClientAddr(confPath string) string {
+	nodes := loadNodes(confPath)
+
+	for _, node := range nodes {
+		if node.Role == "client" {
+			return fmt.Sprintf("%s:%d", node.IP, node.Port)
+		}
+	}
+	log.Fatalf("No client node found in config file")
+	return ""
 }
 
 func sortedIDs(peers map[int]string) []int {
