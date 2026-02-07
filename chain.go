@@ -77,21 +77,21 @@ func NewChainNode(id int, confPath string, debug bool) *ChainNode {
 	}
 
 	node := &ChainNode{
-		me:             id,
-		peers:          peers,
-		predecessor:    predecessor,
-		successor:      successor,
-		isHead:         pos == 0,
-		isTail:         pos == len(ids)-1,
-		state:          make(map[string]string),
-		pendingWrites:  make(map[uint64]chan Response),
-		nextSeq:        0,
-		writeCh: make(chan ClientRequest, 1000),
-		readCh:  make(chan ClientRequest, 1000),
-		putCh:   make(chan *Message, 1000),
-		chainBuf:       make(map[uint64][]byte),
-		nextChainSeq:   1,
-		debug:          debug,
+		me:            id,
+		peers:         peers,
+		predecessor:   predecessor,
+		successor:     successor,
+		isHead:        pos == 0,
+		isTail:        pos == len(ids)-1,
+		state:         make(map[string]string),
+		pendingWrites: make(map[uint64]chan Response),
+		nextSeq:       0,
+		writeCh:       make(chan ClientRequest, 1000),
+		readCh:        make(chan ClientRequest, 1000),
+		putCh:         make(chan *Message, 1000),
+		chainBuf:      make(map[uint64][]byte),
+		nextChainSeq:  1,
+		debug:         debug,
 	}
 
 	return node

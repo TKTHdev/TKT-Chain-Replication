@@ -10,10 +10,9 @@ import (
 	"time"
 )
 
-
-const(
+const (
 	NumTestClients = 512
-	NumTestWrites = 2000
+	NumTestWrites  = 2000
 )
 
 func writeTestConfig(t *testing.T, basePort int) string {
@@ -141,7 +140,6 @@ func TestConsistencyConcurrent(t *testing.T) {
 	nodes := startTestCluster(t, confPath)
 	client := startTestClient(t, confPath)
 
-
 	var wg sync.WaitGroup
 	for w := 0; w < NumTestClients; w++ {
 		wg.Add(1)
@@ -159,4 +157,3 @@ func TestConsistencyConcurrent(t *testing.T) {
 	time.Sleep(200 * time.Millisecond)
 	assertConsistent(t, nodes)
 }
-

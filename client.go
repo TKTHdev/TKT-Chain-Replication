@@ -52,12 +52,12 @@ func NewClient(confPath string, workload int, workers int, debug bool) *Client {
 	tailAddr, _ := net.ResolveUDPAddr("udp", peers[ids[len(ids)-1]])
 
 	client := &Client{
-		udpConn:        conn,
-		peers:          peers,
-		headAddr:       headAddr,
-		tailAddr:       tailAddr,
-		debug:          debug,
-		pending:        make(map[uint64]chan *Message),
+		udpConn:  conn,
+		peers:    peers,
+		headAddr: headAddr,
+		tailAddr: tailAddr,
+		debug:    debug,
+		pending:  make(map[uint64]chan *Message),
 		workload: workload,
 		workers:  workers,
 	}
