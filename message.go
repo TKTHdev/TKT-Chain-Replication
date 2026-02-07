@@ -13,10 +13,11 @@ const (
 )
 
 type Message struct {
-	Type  uint8
-	Seq   uint64
-	Key   string
-	Value string
+	Type       uint8
+	Seq        uint64
+	Key        string
+	Value      string
+	ClientAddr string // client address for response
 }
 
 func (m *Message) Encode() []byte {
@@ -31,6 +32,10 @@ func (m *Message) Encode() []byte {
 	valBytes := []byte(m.Value)
 	binary.Write(buf, binary.BigEndian, uint16(len(valBytes)))
 	buf.Write(valBytes)
+
+	addrBytes := []byte(m.ClientAddr)
+	binary.Write(buf, binary.BigEndian, uint16(len(addrBytes)))
+	buf.Write(addrBytes)
 
 	return buf.Bytes()
 }
@@ -53,6 +58,12 @@ func DecodeMessage(data []byte) (*Message, error) {
 	valBytes := make([]byte, valLen)
 	buf.Read(valBytes)
 	m.Value = string(valBytes)
+
+	var addrLen uint16
+	binary.Read(buf, binary.BigEndian, &addrLen)
+	addrBytes := make([]byte, addrLen)
+	buf.Read(addrBytes)
+	m.ClientAddr = string(addrBytes)
 
 	return m, nil
 }

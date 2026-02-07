@@ -20,7 +20,7 @@ type ChainNode struct {
 	udpConn *net.UDPConn
 
 	// State machine (KV store)
-	stateMachine map[string]string
+	state map[string]string
 
 	// Pending write requests (seq -> response channel)
 	pendingWrites map[uint64]chan Response
@@ -73,7 +73,7 @@ func NewChainNode(id int, confPath string, debug bool) *ChainNode {
 		successor:     successor,
 		isHead:        pos == 0,
 		isTail:        pos == len(ids)-1,
-		stateMachine:  make(map[string]string),
+		state:         make(map[string]string),
 		pendingWrites: make(map[uint64]chan Response),
 		nextSeq:       0,
 		writeCh:       make(chan ClientRequest, 1000),
