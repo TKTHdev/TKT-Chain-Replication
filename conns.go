@@ -31,7 +31,9 @@ func (c *ChainNode) listen() error {
 			c.log("Failed to read UDP: %v", err)
 			continue
 		}
-		go c.handleMessage(buf[:n], remoteAddr)
+		data := make([]byte, n)
+		copy(data, buf[:n])
+		go c.handleMessage(data, remoteAddr)
 	}
 }
 
