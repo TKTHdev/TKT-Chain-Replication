@@ -6,6 +6,11 @@ import (
 	"sync"
 )
 
+type putRequest struct {
+	msg  *Message
+	from *net.UDPAddr
+}
+
 type ChainNode struct {
 	// Node identity
 	me    int
@@ -31,6 +36,10 @@ type ChainNode struct {
 	writeCh chan ClientRequest
 	readCh  chan ClientRequest
 
+	// Batching
+	writeBatchSize int
+	putCh          chan putRequest
+
 	// Synchronization
 	mu sync.RWMutex
 
@@ -51,7 +60,7 @@ type Response struct {
 	Err     string
 }
 
-func NewChainNode(id int, confPath string, debug bool) *ChainNode {
+func NewChainNode(id int, confPath string, debug bool, writeBatchSize int) *ChainNode {
 	peers := parseConfig(confPath)
 
 	// Determine chain order (ascending by ID)
@@ -68,18 +77,20 @@ func NewChainNode(id int, confPath string, debug bool) *ChainNode {
 	}
 
 	node := &ChainNode{
-		me:            id,
-		peers:         peers,
-		predecessor:   predecessor,
-		successor:     successor,
-		isHead:        pos == 0,
-		isTail:        pos == len(ids)-1,
-		state:         make(map[string]string),
-		pendingWrites: make(map[uint64]chan Response),
-		nextSeq:       0,
-		writeCh:       make(chan ClientRequest, 1000),
-		readCh:        make(chan ClientRequest, 1000),
-		debug:         debug,
+		me:             id,
+		peers:          peers,
+		predecessor:    predecessor,
+		successor:      successor,
+		isHead:         pos == 0,
+		isTail:         pos == len(ids)-1,
+		state:          make(map[string]string),
+		pendingWrites:  make(map[uint64]chan Response),
+		nextSeq:        0,
+		writeCh:        make(chan ClientRequest, 1000),
+		readCh:         make(chan ClientRequest, 1000),
+		writeBatchSize: writeBatchSize,
+		putCh:          make(chan putRequest, 1000),
+		debug:          debug,
 	}
 
 	return node
@@ -92,13 +103,13 @@ func (c *ChainNode) Run() {
 	} else if c.isTail {
 		role = "tail"
 	}
-	log.Printf("[Node %d] Starting as %s on %s", c.me, role, c.peers[c.me])
+	log.Printf("[Node %d] Starting as %s on %s (writeBatchSize=%d)", c.me, role, c.peers[c.me], c.writeBatchSize)
 
 	go c.listen()
 
-	// TODO: implement
-	// go c.handleWrites()
-	// go c.handleReads()
+	if c.isHead {
+		go c.batchPutHandler()
+	}
 
 	select {}
 }

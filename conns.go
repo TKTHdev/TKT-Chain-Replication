@@ -4,7 +4,10 @@ import (
 	"fmt"
 	"log"
 	"net"
+	"time"
 )
+
+const WRITE_LINGER_TIME = 5 * time.Millisecond
 
 func (c *ChainNode) listen() error {
 	addr, err := net.ResolveUDPAddr("udp", c.peers[c.me])
@@ -33,6 +36,16 @@ func (c *ChainNode) listen() error {
 }
 
 func (c *ChainNode) handleMessage(data []byte, from *net.UDPAddr) {
+	if len(data) == 0 {
+		return
+	}
+
+	// Check first byte for batch type before full decode
+	if data[0] == MsgTypeBatchPut {
+		c.handleBatchPut(data)
+		return
+	}
+
 	msg, err := DecodeMessage(data)
 	if err != nil {
 		c.log("Failed to decode message: %v", err)
@@ -48,9 +61,13 @@ func (c *ChainNode) handleMessage(data []byte, from *net.UDPAddr) {
 }
 
 func (c *ChainNode) handlePut(msg *Message, from *net.UDPAddr) {
-	// Set client address if this is from client (head receives from client)
-	if c.isHead && msg.ClientAddr == "" {
-		msg.ClientAddr = from.String()
+	// Head with batching: enqueue to putCh
+	if c.isHead {
+		if msg.ClientAddr == "" {
+			msg.ClientAddr = from.String()
+		}
+		c.putCh <- putRequest{msg: msg, from: from}
+		return
 	}
 
 	c.log("PUT key=%s value=%s seq=%d", msg.Key, msg.Value, msg.Seq)
@@ -61,10 +78,8 @@ func (c *ChainNode) handlePut(msg *Message, from *net.UDPAddr) {
 	c.mu.Unlock()
 
 	if c.isTail {
-		// Tail: send ACK back to client
 		c.sendAckToClient(msg)
 	} else {
-		// Forward to successor
 		c.sendToSuccessor(msg.Encode())
 	}
 }
@@ -145,6 +160,106 @@ func (c *ChainNode) sendToPredecessor(data []byte) error {
 		return nil
 	}
 	return c.sendTo(c.predecessor, data)
+}
+
+// batchPutHandler runs on the head node. It accumulates PUT requests
+// and flushes them as a batch when the batch size is reached or the
+// linger timer fires.
+func (c *ChainNode) batchPutHandler() {
+	batchSize := c.writeBatchSize
+
+	var pending []*Message
+	var timer *time.Timer
+	var timerCh <-chan time.Time
+
+	stopTimer := func(t *time.Timer) {
+		if !t.Stop() {
+			select {
+			case <-t.C:
+			default:
+			}
+		}
+	}
+
+	flush := func() {
+		if len(pending) == 0 {
+			return
+		}
+
+		// Apply all to state machine
+		c.mu.Lock()
+		for _, m := range pending {
+			c.state[m.Key] = m.Value
+		}
+		c.mu.Unlock()
+
+		if c.isTail {
+			// Head is also tail (single node): ACK each
+			for _, m := range pending {
+				c.sendAckToClient(m)
+			}
+		} else {
+			// Encode and forward batch to successor
+			c.sendToSuccessor(EncodeBatch(pending))
+		}
+
+		for _, m := range pending {
+			c.log("PUT key=%s value=%s seq=%d (batched)", m.Key, m.Value, m.Seq)
+		}
+		pending = nil
+	}
+
+	for {
+		select {
+		case req := <-c.putCh:
+			pending = append(pending, req.msg)
+			if len(pending) >= batchSize {
+				flush()
+				if timer != nil {
+					stopTimer(timer)
+					timer = nil
+					timerCh = nil
+				}
+			} else if timer == nil {
+				timer = time.NewTimer(WRITE_LINGER_TIME)
+				timerCh = timer.C
+			}
+		case <-timerCh:
+			flush()
+			timer = nil
+			timerCh = nil
+		}
+	}
+}
+
+// handleBatchPut is used by middle and tail nodes to process a batch message.
+func (c *ChainNode) handleBatchPut(data []byte) {
+	msgs, err := DecodeBatch(data)
+	if err != nil {
+		c.log("Failed to decode batch: %v", err)
+		return
+	}
+
+	// Apply all to state machine
+	c.mu.Lock()
+	for _, m := range msgs {
+		c.state[m.Key] = m.Value
+	}
+	c.mu.Unlock()
+
+	if c.isTail {
+		// Send individual ACKs back to each client
+		for _, m := range msgs {
+			c.log("PUT key=%s value=%s seq=%d (batch-tail)", m.Key, m.Value, m.Seq)
+			c.sendAckToClient(m)
+		}
+	} else {
+		// Forward entire batch to successor
+		for _, m := range msgs {
+			c.log("PUT key=%s value=%s seq=%d (batch-mid)", m.Key, m.Value, m.Seq)
+		}
+		c.sendToSuccessor(data)
+	}
 }
 
 func (c *ChainNode) log(format string, args ...interface{}) {

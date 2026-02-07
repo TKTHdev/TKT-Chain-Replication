@@ -10,6 +10,7 @@ const (
 	MsgTypeGet
 	MsgTypeAck
 	MsgTypeResponse
+	MsgTypeBatchPut
 )
 
 type Message struct {
@@ -66,4 +67,43 @@ func DecodeMessage(data []byte) (*Message, error) {
 	m.ClientAddr = string(addrBytes)
 
 	return m, nil
+}
+
+// EncodeBatch encodes multiple messages into a single UDP packet.
+// Format: [Type:1][Count:2][MsgLen1:2][Msg1][MsgLen2:2][Msg2]...
+func EncodeBatch(msgs []*Message) []byte {
+	buf := new(bytes.Buffer)
+	binary.Write(buf, binary.BigEndian, uint8(MsgTypeBatchPut))
+	binary.Write(buf, binary.BigEndian, uint16(len(msgs)))
+	for _, m := range msgs {
+		encoded := m.Encode()
+		binary.Write(buf, binary.BigEndian, uint16(len(encoded)))
+		buf.Write(encoded)
+	}
+	return buf.Bytes()
+}
+
+// DecodeBatch decodes a batch packet into individual messages.
+func DecodeBatch(data []byte) ([]*Message, error) {
+	buf := bytes.NewReader(data)
+
+	var msgType uint8
+	binary.Read(buf, binary.BigEndian, &msgType)
+
+	var count uint16
+	binary.Read(buf, binary.BigEndian, &count)
+
+	msgs := make([]*Message, 0, count)
+	for i := 0; i < int(count); i++ {
+		var msgLen uint16
+		binary.Read(buf, binary.BigEndian, &msgLen)
+		msgBytes := make([]byte, msgLen)
+		buf.Read(msgBytes)
+		m, err := DecodeMessage(msgBytes)
+		if err != nil {
+			return nil, err
+		}
+		msgs = append(msgs, m)
+	}
+	return msgs, nil
 }

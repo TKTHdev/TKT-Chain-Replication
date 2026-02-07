@@ -28,8 +28,9 @@ type Client struct {
 	nextSeq uint64
 
 	// YCSB config
-	workload int // write ratio (50=YCSB-A, 5=YCSB-B, 0=YCSB-C)
-	workers  int
+	workload       int // write ratio (50=YCSB-A, 5=YCSB-B, 0=YCSB-C)
+	workers        int
+	writeBatchSize int
 }
 
 type WorkerResult struct {
@@ -37,7 +38,7 @@ type WorkerResult struct {
 	duration time.Duration
 }
 
-func NewClient(confPath string, workload int, workers int, debug bool) *Client {
+func NewClient(confPath string, workload int, workers int, debug bool, writeBatchSize int) *Client {
 	peers := parseConfig(confPath)
 	ids := sortedIDs(peers)
 
@@ -52,14 +53,15 @@ func NewClient(confPath string, workload int, workers int, debug bool) *Client {
 	tailAddr, _ := net.ResolveUDPAddr("udp", peers[ids[len(ids)-1]])
 
 	client := &Client{
-		udpConn:  conn,
-		peers:    peers,
-		headAddr: headAddr,
-		tailAddr: tailAddr,
-		debug:    debug,
-		pending:  make(map[uint64]chan *Message),
-		workload: workload,
-		workers:  workers,
+		udpConn:        conn,
+		peers:          peers,
+		headAddr:       headAddr,
+		tailAddr:       tailAddr,
+		debug:          debug,
+		pending:        make(map[uint64]chan *Message),
+		workload:       workload,
+		workers:        workers,
+		writeBatchSize: writeBatchSize,
 	}
 
 	return client
@@ -209,7 +211,7 @@ func (c *Client) runBenchmark() {
 	fmt.Printf("Total ops: %d\n", totalCount)
 	fmt.Printf("Throughput: %.2f ops/sec\n", throughput)
 	fmt.Printf("Avg latency: %.2f ms\n", avgLatency)
-	fmt.Printf("RESULT:%s,%d,%.2f,%.2f\n", workloadName, c.workers, throughput, avgLatency)
+	fmt.Printf("RESULT:%s,%d,%d,%.2f,%.2f\n", workloadName, c.writeBatchSize, c.workers, throughput, avgLatency)
 }
 
 func (c *Client) worker(ctx context.Context) WorkerResult {
