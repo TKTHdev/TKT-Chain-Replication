@@ -7,7 +7,7 @@ import (
 	"time"
 )
 
-const WRITE_LINGER_TIME = 5 * time.Millisecond
+const WRITE_LINGER_TIME = 1 * time.Millisecond
 
 func (c *ChainNode) listen() error {
 	addr, err := net.ResolveUDPAddr("udp", c.peers[c.me])
@@ -39,6 +39,11 @@ func (c *ChainNode) listen() error {
 
 func (c *ChainNode) handleMessage(data []byte, from *net.UDPAddr) {
 	if len(data) == 0 {
+		return
+	}
+
+	if data[0] == MsgTypeChainForward {
+		c.handleChainForward(data)
 		return
 	}
 
@@ -201,8 +206,9 @@ func (c *ChainNode) batchPutHandler() {
 				c.sendAckToClient(m)
 			}
 		} else {
-			// Encode and forward batch to successor
-			c.sendToSuccessor(EncodeBatch(pending))
+			// Encode and forward batch to successor with chain seq
+			c.chainSeq++
+			c.sendToSuccessor(EncodeChainForward(c.chainSeq, EncodeBatch(pending)))
 		}
 
 		for _, m := range pending {
@@ -261,6 +267,84 @@ func (c *ChainNode) handleBatchPut(data []byte) {
 			c.log("PUT key=%s value=%s seq=%d (batch-mid)", m.Key, m.Value, m.Seq)
 		}
 		c.sendToSuccessor(data)
+	}
+}
+
+// handleChainForward receives a chain-forwarded message, reorders by
+// sequence number, and processes in the head's original order.
+func (c *ChainNode) handleChainForward(data []byte) {
+	seq, _ := DecodeChainForward(data)
+
+	c.chainMu.Lock()
+	defer c.chainMu.Unlock()
+
+	if seq < c.nextChainSeq {
+		return // duplicate
+	}
+	if seq > c.nextChainSeq {
+		c.chainBuf[seq] = data
+		return
+	}
+
+	// seq == nextChainSeq: process this and drain buffer
+	c.processChainPayload(data)
+	c.nextChainSeq++
+
+	for {
+		next, ok := c.chainBuf[c.nextChainSeq]
+		if !ok {
+			break
+		}
+		c.processChainPayload(next)
+		delete(c.chainBuf, c.nextChainSeq)
+		c.nextChainSeq++
+	}
+}
+
+// processChainPayload applies the inner message to state and forwards
+// the original wrapped data (preserving the head's chain seq) to the successor.
+func (c *ChainNode) processChainPayload(wrapped []byte) {
+	_, payload := DecodeChainForward(wrapped)
+
+	if payload[0] == MsgTypeBatchPut {
+		msgs, err := DecodeBatch(payload)
+		if err != nil {
+			c.log("Failed to decode batch in chain forward: %v", err)
+			return
+		}
+		c.mu.Lock()
+		for _, m := range msgs {
+			c.state[m.Key] = m.Value
+		}
+		c.mu.Unlock()
+
+		if c.isTail {
+			for _, m := range msgs {
+				c.log("PUT key=%s value=%s seq=%d (chain-tail)", m.Key, m.Value, m.Seq)
+				c.sendAckToClient(m)
+			}
+		} else {
+			for _, m := range msgs {
+				c.log("PUT key=%s value=%s seq=%d (chain-mid)", m.Key, m.Value, m.Seq)
+			}
+			c.sendToSuccessor(wrapped)
+		}
+	} else {
+		msg, err := DecodeMessage(payload)
+		if err != nil {
+			c.log("Failed to decode message in chain forward: %v", err)
+			return
+		}
+		c.log("PUT key=%s value=%s seq=%d (chain-fwd)", msg.Key, msg.Value, msg.Seq)
+		c.mu.Lock()
+		c.state[msg.Key] = msg.Value
+		c.mu.Unlock()
+
+		if c.isTail {
+			c.sendAckToClient(msg)
+		} else {
+			c.sendToSuccessor(wrapped)
+		}
 	}
 }
 

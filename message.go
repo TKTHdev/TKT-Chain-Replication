@@ -11,6 +11,7 @@ const (
 	MsgTypeAck
 	MsgTypeResponse
 	MsgTypeBatchPut
+	MsgTypeChainForward
 )
 
 type Message struct {
@@ -106,4 +107,20 @@ func DecodeBatch(data []byte) ([]*Message, error) {
 		msgs = append(msgs, m)
 	}
 	return msgs, nil
+}
+
+// EncodeChainForward wraps a payload with a chain sequence number.
+// Format: [MsgTypeChainForward:1][chainSeq:8][payload...]
+func EncodeChainForward(chainSeq uint64, payload []byte) []byte {
+	buf := make([]byte, 1+8+len(payload))
+	buf[0] = MsgTypeChainForward
+	binary.BigEndian.PutUint64(buf[1:9], chainSeq)
+	copy(buf[9:], payload)
+	return buf
+}
+
+// DecodeChainForward extracts the chain sequence number and inner payload.
+func DecodeChainForward(data []byte) (uint64, []byte) {
+	chainSeq := binary.BigEndian.Uint64(data[1:9])
+	return chainSeq, data[9:]
 }

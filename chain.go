@@ -40,6 +40,12 @@ type ChainNode struct {
 	writeBatchSize int
 	putCh          chan putRequest
 
+	// Chain FIFO ordering
+	chainSeq     uint64            // outbound counter (head only)
+	nextChainSeq uint64            // next expected inbound seq (non-head)
+	chainBuf     map[uint64][]byte // reorder buffer for early arrivals
+	chainMu      sync.Mutex        // serializes chain message processing
+
 	// Synchronization
 	mu sync.RWMutex
 
@@ -90,6 +96,8 @@ func NewChainNode(id int, confPath string, debug bool, writeBatchSize int) *Chai
 		readCh:         make(chan ClientRequest, 1000),
 		writeBatchSize: writeBatchSize,
 		putCh:          make(chan putRequest, 1000),
+		chainBuf:       make(map[uint64][]byte),
+		nextChainSeq:   1,
 		debug:          debug,
 	}
 
