@@ -6,11 +6,6 @@ import (
 	"sync"
 )
 
-type putRequest struct {
-	msg  *Message
-	from *net.UDPAddr
-}
-
 type ChainNode struct {
 	// Node identity
 	me    int
@@ -36,9 +31,8 @@ type ChainNode struct {
 	writeCh chan ClientRequest
 	readCh  chan ClientRequest
 
-	// Batching
-	writeBatchSize int
-	putCh          chan putRequest
+	// Head write queue
+	putCh chan *Message
 
 	// Chain FIFO ordering
 	chainSeq     uint64            // outbound counter (head only)
@@ -66,7 +60,7 @@ type Response struct {
 	Err     string
 }
 
-func NewChainNode(id int, confPath string, debug bool, writeBatchSize int) *ChainNode {
+func NewChainNode(id int, confPath string, debug bool) *ChainNode {
 	peers := parseConfig(confPath)
 
 	// Determine chain order (ascending by ID)
@@ -92,10 +86,9 @@ func NewChainNode(id int, confPath string, debug bool, writeBatchSize int) *Chai
 		state:          make(map[string]string),
 		pendingWrites:  make(map[uint64]chan Response),
 		nextSeq:        0,
-		writeCh:        make(chan ClientRequest, 1000),
-		readCh:         make(chan ClientRequest, 1000),
-		writeBatchSize: writeBatchSize,
-		putCh:          make(chan putRequest, 1000),
+		writeCh: make(chan ClientRequest, 1000),
+		readCh:  make(chan ClientRequest, 1000),
+		putCh:   make(chan *Message, 1000),
 		chainBuf:       make(map[uint64][]byte),
 		nextChainSeq:   1,
 		debug:          debug,
@@ -111,12 +104,12 @@ func (c *ChainNode) Run() {
 	} else if c.isTail {
 		role = "tail"
 	}
-	log.Printf("[Node %d] Starting as %s on %s (writeBatchSize=%d)", c.me, role, c.peers[c.me], c.writeBatchSize)
+	log.Printf("[Node %d] Starting as %s on %s", c.me, role, c.peers[c.me])
 
 	go c.listen()
 
 	if c.isHead {
-		go c.batchPutHandler()
+		go c.putHandler()
 	}
 
 	select {}

@@ -18,9 +18,8 @@ func main() {
 					id := c.Int("id")
 					conf := c.String("conf")
 					debug := c.Bool("debug")
-					writeBatchSize := c.Int("write-batch-size")
 
-					node := NewChainNode(id, conf, debug, writeBatchSize)
+					node := NewChainNode(id, conf, debug)
 					node.Run()
 					return nil
 				},
@@ -40,11 +39,6 @@ func main() {
 						Usage: "Enable debug logging",
 						Value: false,
 					},
-					&cli.IntFlag{
-						Name:  "write-batch-size",
-						Usage: "Number of PUTs to batch before forwarding",
-						Value: 1,
-					},
 				},
 			},
 			{
@@ -55,7 +49,6 @@ func main() {
 					debug := c.Bool("debug")
 					workers := c.Int("workers")
 					workloadStr := c.String("workload")
-					writeBatchSize := c.Int("write-batch-size")
 
 					workload := 50
 					switch workloadStr {
@@ -67,7 +60,7 @@ func main() {
 						workload = 0
 					}
 
-					client := NewClient(conf, workload, workers, debug, writeBatchSize)
+					client := NewClient(conf, workload, workers, debug)
 					client.Run()
 					return nil
 				},
@@ -91,11 +84,6 @@ func main() {
 						Name:  "debug",
 						Usage: "Enable debug logging",
 						Value: false,
-					},
-					&cli.IntFlag{
-						Name:  "write-batch-size",
-						Usage: "Write batch size (for CSV output)",
-						Value: 1,
 					},
 				},
 			},

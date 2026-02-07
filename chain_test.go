@@ -29,14 +29,14 @@ func writeTestConfig(t *testing.T, basePort int) string {
 	return path
 }
 
-func startTestCluster(t *testing.T, confPath string, batchSize int) []*ChainNode {
+func startTestCluster(t *testing.T, confPath string) []*ChainNode {
 	t.Helper()
 	nodes := make([]*ChainNode, 3)
 	for i := range nodes {
-		nodes[i] = NewChainNode(i+1, confPath, false, batchSize)
+		nodes[i] = NewChainNode(i+1, confPath, false)
 		go nodes[i].listen()
 		if nodes[i].isHead {
-			go nodes[i].batchPutHandler()
+			go nodes[i].putHandler()
 		}
 	}
 	t.Cleanup(func() {
@@ -50,7 +50,7 @@ func startTestCluster(t *testing.T, confPath string, batchSize int) []*ChainNode
 
 func startTestClient(t *testing.T, confPath string) *Client {
 	t.Helper()
-	client := NewClient(confPath, 100, 1, false, 1)
+	client := NewClient(confPath, 100, 1, false)
 	go client.receiveLoop()
 	t.Cleanup(func() { client.udpConn.Close() })
 	time.Sleep(50 * time.Millisecond)
@@ -98,7 +98,7 @@ func assertConsistent(t *testing.T, nodes []*ChainNode) {
 // and verifies all nodes converge to the same state.
 func TestConsistencySequential(t *testing.T) {
 	confPath := writeTestConfig(t, 16100)
-	nodes := startTestCluster(t, confPath, 1)
+	nodes := startTestCluster(t, confPath)
 	client := startTestClient(t, confPath)
 
 	writes := []struct{ key, value string }{
@@ -132,7 +132,7 @@ func TestConsistencySequential(t *testing.T) {
 // different orders and diverge.
 func TestConsistencyConcurrent(t *testing.T) {
 	confPath := writeTestConfig(t, 16200)
-	nodes := startTestCluster(t, confPath, 1)
+	nodes := startTestCluster(t, confPath)
 	client := startTestClient(t, confPath)
 
 	const numWriters = 10
@@ -156,30 +156,3 @@ func TestConsistencyConcurrent(t *testing.T) {
 	assertConsistent(t, nodes)
 }
 
-// TestConsistencyConcurrentBatch is the same as the concurrent test but
-// with batching enabled on the head, exercising the batch encode/decode path.
-func TestConsistencyConcurrentBatch(t *testing.T) {
-	confPath := writeTestConfig(t, 16300)
-	nodes := startTestCluster(t, confPath, 10)
-	client := startTestClient(t, confPath)
-
-	const numWriters = 10
-	const writesPerWriter = 30
-
-	var wg sync.WaitGroup
-	for w := 0; w < numWriters; w++ {
-		wg.Add(1)
-		go func(w int) {
-			defer wg.Done()
-			for i := 0; i < writesPerWriter; i++ {
-				key := fmt.Sprintf("k%d", i%5)
-				val := fmt.Sprintf("w%d-i%d", w, i)
-				client.Put(key, val)
-			}
-		}(w)
-	}
-	wg.Wait()
-
-	time.Sleep(200 * time.Millisecond)
-	assertConsistent(t, nodes)
-}
