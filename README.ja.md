@@ -1,6 +1,6 @@
 # Chain Replication
 
-[English](README.en.md)
+[English](README.md)
 
 Chain Replication プロトコルの Go 実装。インメモリ KV ストアをステートマシンとし、YCSB ベンチマークによる性能測定が可能。
 
