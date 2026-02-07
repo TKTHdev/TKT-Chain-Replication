@@ -1,6 +1,7 @@
 package main
 
 import (
+	"log"
 	"net"
 	"sync"
 )
@@ -85,6 +86,14 @@ func NewChainNode(id int, confPath string, debug bool) *ChainNode {
 }
 
 func (c *ChainNode) Run() {
+	role := "middle"
+	if c.isHead {
+		role = "head"
+	} else if c.isTail {
+		role = "tail"
+	}
+	log.Printf("[Node %d] Starting as %s on %s", c.me, role, c.peers[c.me])
+
 	go c.listen()
 
 	// TODO: implement

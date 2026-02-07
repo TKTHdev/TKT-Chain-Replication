@@ -41,7 +41,8 @@ func NewClient(confPath string, workload int, workers int, debug bool) *Client {
 	peers := parseConfig(confPath)
 	ids := sortedIDs(peers)
 
-	localAddr, _ := net.ResolveUDPAddr("udp", ":0")
+	clientAddr := parseClientAddr(confPath)
+	localAddr, _ := net.ResolveUDPAddr("udp", clientAddr)
 	conn, err := net.ListenUDP("udp", localAddr)
 	if err != nil {
 		panic(err)
@@ -65,8 +66,9 @@ func NewClient(confPath string, workload int, workers int, debug bool) *Client {
 }
 
 func (c *Client) Run() {
-	c.log("Client started (head=%s, tail=%s)", c.headAddr, c.tailAddr)
-	c.log("Workload: %d%% writes, Workers: %d", c.workload, c.workers)
+	fmt.Printf("[Client] Listening on %s\n", c.udpConn.LocalAddr())
+	fmt.Printf("[Client] head=%s, tail=%s\n", c.headAddr, c.tailAddr)
+	fmt.Printf("[Client] Workload: %d%% writes, Workers: %d\n", c.workload, c.workers)
 
 	go c.receiveLoop()
 

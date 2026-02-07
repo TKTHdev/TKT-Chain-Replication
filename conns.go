@@ -2,17 +2,20 @@ package main
 
 import (
 	"fmt"
+	"log"
 	"net"
 )
 
 func (c *ChainNode) listen() error {
 	addr, err := net.ResolveUDPAddr("udp", c.peers[c.me])
 	if err != nil {
+		log.Printf("[Node %d] Failed to resolve address: %v", c.me, err)
 		return err
 	}
 
 	conn, err := net.ListenUDP("udp", addr)
 	if err != nil {
+		log.Printf("[Node %d] Failed to listen UDP: %v", c.me, err)
 		return err
 	}
 	c.udpConn = conn
@@ -147,6 +150,6 @@ func (c *ChainNode) sendToPredecessor(data []byte) error {
 func (c *ChainNode) log(format string, args ...interface{}) {
 	if c.debug {
 		msg := fmt.Sprintf(format, args...)
-		fmt.Printf("[Node %d] %s\n", c.me, msg)
+		log.Printf("[Node %d] %s", c.me, msg)
 	}
 }
