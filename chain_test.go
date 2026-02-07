@@ -10,6 +10,12 @@ import (
 	"time"
 )
 
+
+const(
+	NumTestClients = 512
+	NumTestWrites = 2000
+)
+
 func writeTestConfig(t *testing.T, basePort int) string {
 	t.Helper()
 	nodes := []Node{
@@ -135,15 +141,13 @@ func TestConsistencyConcurrent(t *testing.T) {
 	nodes := startTestCluster(t, confPath)
 	client := startTestClient(t, confPath)
 
-	const numWriters = 10
-	const writesPerWriter = 20
 
 	var wg sync.WaitGroup
-	for w := 0; w < numWriters; w++ {
+	for w := 0; w < NumTestClients; w++ {
 		wg.Add(1)
 		go func(w int) {
 			defer wg.Done()
-			for i := 0; i < writesPerWriter; i++ {
+			for i := 0; i < NumTestWrites; i++ {
 				key := fmt.Sprintf("k%d", i%5) // 5 keys, heavy contention
 				val := fmt.Sprintf("w%d-i%d", w, i)
 				client.Put(key, val)
