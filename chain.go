@@ -17,8 +17,12 @@ type ChainNode struct {
 	isHead      bool
 	isTail      bool
 
-	// UDP connection
-	udpConn *net.UDPConn
+	// TCP connections
+	listener   net.Listener
+	peerConns  map[int]net.Conn // id -> connection
+	connsMu    sync.RWMutex     // protects peerConns
+	writeMu    sync.Mutex       // protects writes to connections
+	clientConn sync.Map         // client addr -> net.Conn
 
 	// State machine (KV store)
 	state map[string]string
@@ -83,6 +87,7 @@ func NewChainNode(id int, confPath string, debug bool) *ChainNode {
 		successor:     successor,
 		isHead:        pos == 0,
 		isTail:        pos == len(ids)-1,
+		peerConns:     make(map[int]net.Conn),
 		state:         make(map[string]string),
 		pendingWrites: make(map[uint64]chan Response),
 		nextSeq:       0,

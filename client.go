@@ -2,7 +2,9 @@ package main
 
 import (
 	"context"
+	"encoding/binary"
 	"fmt"
+	"io"
 	"math/rand"
 	"net"
 	"sync"
@@ -16,11 +18,12 @@ const (
 )
 
 type Client struct {
-	udpConn  *net.UDPConn
-	peers    map[int]string
-	headAddr *net.UDPAddr
-	tailAddr *net.UDPAddr
-	debug    bool
+	headConn   net.Conn
+	tailConn   net.Conn
+	headConnMu sync.Mutex // protects writes to headConn
+	tailConnMu sync.Mutex // protects writes to tailConn
+	peers      map[int]string
+	debug      bool
 
 	// Pending requests (seq -> response channel)
 	pending map[uint64]chan *Message
@@ -41,21 +44,24 @@ func NewClient(confPath string, workload int, workers int, debug bool) *Client {
 	peers := parseConfig(confPath)
 	ids := sortedIDs(peers)
 
-	clientAddr := parseClientAddr(confPath)
-	localAddr, _ := net.ResolveUDPAddr("udp", clientAddr)
-	conn, err := net.ListenUDP("udp", localAddr)
+	// Connect to head
+	headAddr := peers[ids[0]]
+	headConn, err := net.DialTimeout("tcp", headAddr, 5*time.Second)
 	if err != nil {
-		panic(err)
+		panic(fmt.Sprintf("Failed to connect to head: %v", err))
 	}
 
-	headAddr, _ := net.ResolveUDPAddr("udp", peers[ids[0]])
-	tailAddr, _ := net.ResolveUDPAddr("udp", peers[ids[len(ids)-1]])
+	// Connect to tail
+	tailAddr := peers[ids[len(ids)-1]]
+	tailConn, err := net.DialTimeout("tcp", tailAddr, 5*time.Second)
+	if err != nil {
+		panic(fmt.Sprintf("Failed to connect to tail: %v", err))
+	}
 
 	client := &Client{
-		udpConn:  conn,
+		headConn: headConn,
+		tailConn: tailConn,
 		peers:    peers,
-		headAddr: headAddr,
-		tailAddr: tailAddr,
 		debug:    debug,
 		pending:  make(map[uint64]chan *Message),
 		workload: workload,
@@ -66,11 +72,12 @@ func NewClient(confPath string, workload int, workers int, debug bool) *Client {
 }
 
 func (c *Client) Run() {
-	fmt.Printf("[Client] Listening on %s\n", c.udpConn.LocalAddr())
-	fmt.Printf("[Client] head=%s, tail=%s\n", c.headAddr, c.tailAddr)
+	fmt.Printf("[Client] Connected to head=%s, tail=%s\n", c.headConn.RemoteAddr(), c.tailConn.RemoteAddr())
 	fmt.Printf("[Client] Workload: %d%% writes, Workers: %d\n", c.workload, c.workers)
 
-	go c.receiveLoop()
+	// Start receive loops for both connections
+	go c.receiveLoop(c.headConn)
+	go c.receiveLoop(c.tailConn)
 
 	// Wait for servers to be ready
 	time.Sleep(2 * time.Second)
@@ -78,16 +85,25 @@ func (c *Client) Run() {
 	c.runBenchmark()
 }
 
-func (c *Client) receiveLoop() {
-	buf := make([]byte, 65535)
+func (c *Client) receiveLoop(conn net.Conn) {
 	for {
-		n, _, err := c.udpConn.ReadFromUDP(buf)
-		if err != nil {
-			c.log("Failed to read UDP: %v", err)
-			continue
+		// Read message length (4 bytes)
+		var msgLen uint32
+		if err := binary.Read(conn, binary.BigEndian, &msgLen); err != nil {
+			if err != io.EOF {
+				c.log("Failed to read message length: %v", err)
+			}
+			return
 		}
 
-		msg, err := DecodeMessage(buf[:n])
+		// Read message data
+		data := make([]byte, msgLen)
+		if _, err := io.ReadFull(conn, data); err != nil {
+			c.log("Failed to read message data: %v", err)
+			return
+		}
+
+		msg, err := DecodeMessage(data)
 		if err != nil {
 			c.log("Failed to decode message: %v", err)
 			continue
@@ -101,6 +117,32 @@ func (c *Client) receiveLoop() {
 			ch <- msg
 		}
 	}
+}
+
+func (c *Client) sendMessage(conn net.Conn, msg *Message) error {
+	// Lock the appropriate connection
+	if conn == c.headConn {
+		c.headConnMu.Lock()
+		defer c.headConnMu.Unlock()
+	} else if conn == c.tailConn {
+		c.tailConnMu.Lock()
+		defer c.tailConnMu.Unlock()
+	}
+
+	data := msg.Encode()
+
+	// Write length prefix
+	msgLen := uint32(len(data))
+	if err := binary.Write(conn, binary.BigEndian, msgLen); err != nil {
+		return err
+	}
+
+	// Write message data
+	if _, err := conn.Write(data); err != nil {
+		return err
+	}
+
+	return nil
 }
 
 func (c *Client) Put(key, value string) bool {
@@ -123,7 +165,10 @@ func (c *Client) Put(key, value string) bool {
 		c.mu.Unlock()
 	}()
 
-	c.udpConn.WriteToUDP(msg.Encode(), c.headAddr)
+	if err := c.sendMessage(c.headConn, msg); err != nil {
+		c.log("Failed to send PUT: %v", err)
+		return false
+	}
 
 	select {
 	case resp := <-respCh:
@@ -152,7 +197,10 @@ func (c *Client) Get(key string) (string, bool) {
 		c.mu.Unlock()
 	}()
 
-	c.udpConn.WriteToUDP(msg.Encode(), c.tailAddr)
+	if err := c.sendMessage(c.tailConn, msg); err != nil {
+		c.log("Failed to send GET: %v", err)
+		return "", false
+	}
 
 	select {
 	case resp := <-respCh:

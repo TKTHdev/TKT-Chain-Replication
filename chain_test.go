@@ -38,7 +38,7 @@ func startTestCluster(t *testing.T, confPath string) []*ChainNode {
 	t.Helper()
 	nodes := make([]*ChainNode, 3)
 	for i := range nodes {
-		nodes[i] = NewChainNode(i+1, confPath, false)
+		nodes[i] = NewChainNode(i+1, confPath, false) // Disable debug
 		go nodes[i].listen()
 		if nodes[i].isHead {
 			go nodes[i].putHandler()
@@ -46,19 +46,31 @@ func startTestCluster(t *testing.T, confPath string) []*ChainNode {
 	}
 	t.Cleanup(func() {
 		for _, n := range nodes {
-			n.udpConn.Close()
+			if n.listener != nil {
+				n.listener.Close()
+			}
 		}
 	})
-	time.Sleep(100 * time.Millisecond)
+	// TCP needs more time to establish listeners
+	time.Sleep(500 * time.Millisecond)
 	return nodes
 }
 
 func startTestClient(t *testing.T, confPath string) *Client {
 	t.Helper()
-	client := NewClient(confPath, 100, 1, false)
-	go client.receiveLoop()
-	t.Cleanup(func() { client.udpConn.Close() })
-	time.Sleep(50 * time.Millisecond)
+	client := NewClient(confPath, 100, 1, false) // Disable debug
+	go client.receiveLoop(client.headConn)
+	go client.receiveLoop(client.tailConn)
+	t.Cleanup(func() {
+		if client.headConn != nil {
+			client.headConn.Close()
+		}
+		if client.tailConn != nil {
+			client.tailConn.Close()
+		}
+	})
+	// TCP connections need time to establish
+	time.Sleep(100 * time.Millisecond)
 	return client
 }
 

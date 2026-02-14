@@ -11,6 +11,7 @@ const (
 	MsgTypeAck
 	MsgTypeResponse
 	MsgTypeChainForward
+	MsgTypeChainAck // ACK sent back through the chain
 )
 
 type Message struct {
