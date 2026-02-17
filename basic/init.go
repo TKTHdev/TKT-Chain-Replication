@@ -48,6 +48,7 @@ func main() {
 					conf := c.String("conf")
 					debug := c.Bool("debug")
 					workers := c.Int("workers")
+					numKeys := c.Int("keys")
 					workloadStr := c.String("workload")
 
 					workload := 50
@@ -60,7 +61,7 @@ func main() {
 						workload = 0
 					}
 
-					client := NewClient(conf, workload, workers, debug)
+					client := NewClient(conf, workload, workers, numKeys, debug)
 					client.Run()
 					return nil
 				},
@@ -79,6 +80,11 @@ func main() {
 						Name:  "workload",
 						Usage: "Workload type (ycsb-a, ycsb-b, ycsb-c)",
 						Value: "ycsb-a",
+					},
+					&cli.IntFlag{
+						Name:  "keys",
+						Usage: "Number of keys to use in benchmark",
+						Value: 6,
 					},
 					&cli.BoolFlag{
 						Name:  "debug",

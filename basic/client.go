@@ -30,6 +30,7 @@ type Client struct {
 	// YCSB config
 	workload int // write ratio (50=YCSB-A, 5=YCSB-B, 0=YCSB-C)
 	workers  int
+	numKeys  int
 }
 
 type WorkerResult struct {
@@ -37,7 +38,7 @@ type WorkerResult struct {
 	duration time.Duration
 }
 
-func NewClient(confPath string, workload int, workers int, debug bool) *Client {
+func NewClient(confPath string, workload int, workers int, numKeys int, debug bool) *Client {
 	peers := parseConfig(confPath)
 	ids := sortedIDs(peers)
 
@@ -60,6 +61,7 @@ func NewClient(confPath string, workload int, workers int, debug bool) *Client {
 		pending:  make(map[uint64]chan *Message),
 		workload: workload,
 		workers:  workers,
+		numKeys:  numKeys,
 	}
 
 	return client
@@ -68,7 +70,7 @@ func NewClient(confPath string, workload int, workers int, debug bool) *Client {
 func (c *Client) Run() {
 	fmt.Printf("[Client] Listening on %s\n", c.udpConn.LocalAddr())
 	fmt.Printf("[Client] head=%s, tail=%s\n", c.headAddr, c.tailAddr)
-	fmt.Printf("[Client] Workload: %d%% writes, Workers: %d\n", c.workload, c.workers)
+	fmt.Printf("[Client] Workload: %d%% writes, Workers: %d, Keys: %d\n", c.workload, c.workers, c.numKeys)
 
 	go c.receiveLoop()
 
@@ -209,12 +211,11 @@ func (c *Client) runBenchmark() {
 	fmt.Printf("Total ops: %d\n", totalCount)
 	fmt.Printf("Throughput: %.2f ops/sec\n", throughput)
 	fmt.Printf("Avg latency: %.2f ms\n", avgLatency)
-	fmt.Printf("RESULT:%s,%d,%.2f,%.2f\n", workloadName, c.workers, throughput, avgLatency)
+	fmt.Printf("RESULT:%s,%d,%d,%.2f,%.2f\n", workloadName, c.workers, c.numKeys, throughput, avgLatency)
 }
 
 func (c *Client) worker(ctx context.Context) WorkerResult {
 	res := WorkerResult{}
-	keys := []string{"a", "b", "c", "d", "e", "f"}
 
 	for {
 		select {
@@ -223,7 +224,7 @@ func (c *Client) worker(ctx context.Context) WorkerResult {
 		default:
 		}
 
-		key := keys[rand.Intn(len(keys))]
+		key := fmt.Sprintf("k%d", rand.Intn(c.numKeys))
 		value := randomValue(VALUE_SIZE)
 
 		start := time.Now()

@@ -21,6 +21,7 @@ endif
 WORKLOAD ?= ycsb-a
 WORKERS  ?= 1
 TYPE ?= ycsb-a
+KEYS ?= 6
 TIMESTAMP := $(shell date +%Y%m%d_%H%M%S)
 
 .PHONY: help build start kill clean benchmark
@@ -39,6 +40,7 @@ help:
 	@echo "  DEBUG=true              - Enable debug logging"
 	@echo "  TYPE=ycsb-a             - Workload type (ycsb-a, ycsb-b, ycsb-c)"
 	@echo "  WORKERS='1 2 4'         - Space-separated worker counts"
+	@echo "  KEYS='6 100 1000'       - Space-separated key counts"
 
 build:
 	go build -o $(BINARY_NAME) .
@@ -72,9 +74,10 @@ clean:
 benchmark: build
 	@mkdir -p $(RESULT_DIR)
 	$(eval CSV_FILE := $(RESULT_DIR)/benchmark_$(TIMESTAMP)_$(TYPE).csv)
-	@echo "Workload,Workers,Throughput(ops/sec),Latency(ms)" > $(CSV_FILE)
+	@echo "Workload,Workers,Keys,Throughput(ops/sec),Latency(ms)" > $(CSV_FILE)
 	@for w in $(WORKERS); do \
-		echo "=== Workers=$$w ==="; \
+	for k in $(KEYS); do \
+		echo "=== Workers=$$w Keys=$$k ==="; \
 		$(MAKE) kill 2>/dev/null || true; \
 		sleep 1; \
 		mkdir -p $(LOG_DIR); \
@@ -83,12 +86,13 @@ benchmark: build
 			echo $$! > $(LOG_DIR)/node_$$id.pid; \
 		done; \
 		sleep 2; \
-		./$(BINARY_NAME) client --conf $(CONFIG_FILE) --workload $(TYPE) --workers $$w $(DEBUG_FLAG) \
+		./$(BINARY_NAME) client --conf $(CONFIG_FILE) --workload $(TYPE) --workers $$w --keys $$k $(DEBUG_FLAG) \
 			| tee -a $(LOG_DIR)/bench.log \
 			| grep '^RESULT:' \
 			| sed 's/^RESULT://' >> $(CSV_FILE); \
 		$(MAKE) kill 2>/dev/null || true; \
 		sleep 1; \
+	done; \
 	done
 	@echo "Results written to $(CSV_FILE)"
 	@cat $(CSV_FILE)

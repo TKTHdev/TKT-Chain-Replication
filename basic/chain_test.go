@@ -55,7 +55,7 @@ func startTestCluster(t *testing.T, confPath string) []*ChainNode {
 
 func startTestClient(t *testing.T, confPath string) *Client {
 	t.Helper()
-	client := NewClient(confPath, 100, 1, false)
+	client := NewClient(confPath, 100, 1, 5, false)
 	go client.receiveLoop()
 	t.Cleanup(func() { client.udpConn.Close() })
 	time.Sleep(50 * time.Millisecond)
